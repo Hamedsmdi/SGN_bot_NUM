@@ -4,7 +4,7 @@ import os
 import random
 import mysql.connector
 
-BOT_TOKEN = "7256899482:AAFtFnfKfpnGLA3qjBGlKMyVAsVMZ1-AXhw"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 # اطلاعات دیتابیس
 db_config = {
     "host": "localhost",
