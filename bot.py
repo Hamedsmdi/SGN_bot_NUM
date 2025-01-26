@@ -3,7 +3,7 @@ from psycopg2 import sql
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TELEGRAM_BOT_TOKEN = os.getenv(" 7256899482:AAFtFnfKfpnGLA3qjBGlKMyVAsVMZ1-AXhw")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # تنظیمات اتصال به دیتابیس
 db_config = {
