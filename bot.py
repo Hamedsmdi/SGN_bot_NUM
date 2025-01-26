@@ -2,7 +2,7 @@ import os
 import logging
 import psycopg2
 import random
-from telegram import Update
+from telegram import Update, ChatMember
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 # تنظیمات مربوط به log
@@ -81,15 +81,7 @@ def generate_discount_code():
 
 # دستور شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    # ساخت لینک دعوت منحصر به فرد
-    invite_link = f"https://t.me/SGN_Gallery_CRM?start={user.id}"
-    
-    # ارسال پیام خوش‌آمدگویی و لینک دعوت
-    await update.message.reply_text(
-        f"سلام! من ربات هوشمند گالری گوهر نگار هستم. شما می‌توانید از طریق این لینک، دوستانتان را به کانال فروشگاه دعوت کنید: {invite_link}\n\n"
-        "کاربرانی که از طریق این لینک به کانال ملحق شوند، برای شما امتیاز به همراه می‌آورند و شما می‌توانید از امتیازات خود برای دریافت تخفیف استفاده کنید."
-    )
+    await update.message.reply_text("سلام! من ربات هوشمند گالری گوهر نگار هستم. من برای شما یک لینک منحصر به فرد ارسال میکنم و کاربرانی که با این لینک دعوت کنین برای شما امتیاز به همراه میارند و میتونین با امتیازات خودتون تا سقف 50 درصد تخفیف از گالری دریافت کنین ، یعنی اگر سبد خریدتون 1 میلیون تومان بشه شما فقط 500 هزار تومن پرداخت میکنین .")
 
 
 # ذخیره اطلاعات کاربر در دیتابیس
@@ -115,6 +107,56 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text("مشکلی در ذخیره اطلاعات شما پیش آمد.")
         finally:
             connection.close()
+
+
+# بررسی عضویت کاربر در کانال
+async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    inviter_user_id = update.effective_user.id
+    invite_link = update.message.text.split()[0]  # فرض بر این است که لینک دعوت به صورت مستقیم وارد شده
+    invited_user_id = update.message.text.split()[1]  # آیدی کاربری که دعوت شده
+
+    # بررسی عضویت در کانال
+    try:
+        chat_member = await context.bot.get_chat_member(
+            chat_id="@SGN_Gallery_CRM",  # نام کانال شما
+            user_id=invited_user_id,
+        )
+
+        # اگر عضو شده باشد
+        if chat_member.status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.CREATOR]:
+            connection = connect_to_database()
+            if connection:
+                try:
+                    with connection.cursor() as cursor:
+                        # افزایش شمارش دعوت‌ها
+                        cursor.execute(
+                            """
+                            UPDATE users
+                            SET invite_count = invite_count + 1
+                            WHERE user_id = %s
+                            RETURNING invite_count;
+                            """,
+                            (inviter_user_id,)
+                        )
+                        result = cursor.fetchone()
+
+                        if result:
+                            invite_count = result[0]
+                            # ارسال پیام به دعوت‌کننده
+                            remaining_invites = 10 - invite_count
+                            await context.bot.send_message(
+                                chat_id=inviter_user_id,
+                                text=f"تبریک! عضوی که شما دعوت کرده بودید به کانال پیوست. "
+                                     f"شمارش دعوت‌ها به روز شد. شما تاکنون {invite_count} نفر را دعوت کرده‌اید. "
+                                     f"فقط {remaining_invites} نفر دیگر دعوت کنید تا کد تخفیف دریافت کنید."
+                            )
+                except Exception as e:
+                    logger.error(f"Error updating invite count: {e}")
+            else:
+                await update.message.reply_text("مشکلی در اتصال به دیتابیس پیش آمد.")
+    except Exception as e:
+        logger.error(f"Error checking membership: {e}")
+        await update.message.reply_text("مشکلی در بررسی عضویت کاربر پیش آمد.")
 
 
 # شمارش دعوت‌ها و تولید کد تخفیف
