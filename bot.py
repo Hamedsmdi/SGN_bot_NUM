@@ -7,10 +7,11 @@ import mysql.connector
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # اطلاعات دیتابیس
 db_config = {
-    "host": "ns473.mihanwebhost.com",
-    "user": "sgncoir_SGN_TELEGRAM_bot",
-    "password": "nGbo1{ew~&$]",
-    "database": "sgncoir_SGN_TELEGRAM_bot"
+    'host': 'dpg-cub1hu3qf0us73cc12ug-a',  # جایگزین کردن Hostname
+    'port': '5432',  # جایگزین کردن Port
+    'database': 'telegram_bot_d2me',  # جایگزین کردن Database
+    'user': 'telegram_bot',  # جایگزین کردن Username
+    'password': '68IQ9wpq8kRu6prEmd1rKEoDBSpZh4nB'  # جایگزین کردن Password
 }
 
 # اتصال به دیتابیس
