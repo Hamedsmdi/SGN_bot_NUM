@@ -22,7 +22,6 @@ DB_NAME = "telegram_bot_d2me"
 DB_USER = "telegram_bot"
 DB_PASSWORD = "68IQ9wpq8kRu6prEmd1rKEoDBSpZh4nB"
 
-
 # تابع اتصال به دیتابیس
 def connect_to_database():
     try:
@@ -38,7 +37,6 @@ def connect_to_database():
     except Exception as e:
         logger.error(f"Error connecting to the database: {e}")
         return None
-
 
 # ایجاد جدول در دیتابیس (در صورتی که وجود نداشته باشد)
 def initialize_database():
@@ -73,16 +71,13 @@ def initialize_database():
         finally:
             connection.close()
 
-
 # تولید کد تخفیف به صورت رندوم
 def generate_discount_code():
     return ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=8))
 
-
 # دستور شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("سلام! من ربات هوشمند گالری گوهر نگار هستم. من برای شما یک لینک منحصر به فرد ارسال میکنم و کاربرانی که با این لینک دعوت کنین برای شما امتیاز به همراه میارند و میتونین با امتیازات خودتون تا سقف 50 درصد تخفیف از گالری دریافت کنین ، یعنی اگر سبد خریدتون 1 میلیون تومان بشه شما فقط 500 هزار تومن پرداخت میکنین .")
-
 
 # ذخیره اطلاعات کاربر در دیتابیس
 async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -107,7 +102,6 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text("مشکلی در ذخیره اطلاعات شما پیش آمد.")
         finally:
             connection.close()
-
 
 # شمارش دعوت‌ها و تولید کد تخفیف
 async def invite_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -155,7 +149,6 @@ async def invite_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         finally:
             connection.close()
 
-
 # ارسال پیام انبوه
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != 123456789:  # جایگزین با آیدی ادمین
@@ -181,8 +174,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         finally:
             connection.close()
 
-
-# راه‌اندازی برنامه
+# راه‌اندازی برنامه با Webhook
 def main():
     initialize_database()
 
@@ -194,9 +186,14 @@ def main():
     application.add_handler(CommandHandler("invite", invite_user))
     application.add_handler(CommandHandler("broadcast", broadcast))
 
-    # اجرای ربات
-    application.run_polling()
-
+    # تنظیمات Webhook
+    # در اینجا باید URL مربوط به سرویس Render خود را وارد کنید
+    application.run_webhook(
+        listen="0.0.0.0",  # تنظیم آدرس IP برای گوش دادن
+        port=443,          # پورت HTTPS برای Render
+        url_path=TELEGRAM_BOT_TOKEN,  # مسیر آدرس وب‌هوک
+        webhook_url="https://sgn-bot-num.onrender.com/" + TELEGRAM_BOT_TOKEN  # آدرس کامل وب‌هوک
+    )
 
 if __name__ == "__main__":
     main()
