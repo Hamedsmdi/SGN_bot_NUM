@@ -1,125 +1,86 @@
+import psycopg2
+from psycopg2 import sql
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import os
-import random
-import mysql.connector
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-# اطلاعات دیتابیس
+# تنظیمات اتصال به دیتابیس
 db_config = {
-    'host': 'dpg-cub1hu3qf0us73cc12ug-a',  # جایگزین کردن Hostname
-    'port': '5432',  # جایگزین کردن Port
-    'database': 'telegram_bot_d2me',  # جایگزین کردن Database
-    'user': 'telegram_bot',  # جایگزین کردن Username
-    'password': '68IQ9wpq8kRu6prEmd1rKEoDBSpZh4nB'  # جایگزین کردن Password
+    'host': 'dpg-cub1hu3qf0us73cc12ug-a',
+    'port': '5432',
+    'dbname': 'telegram_bot_d2me',
+    'user': 'telegram_bot',
+    'password': '68IQ9wpq8kRu6prEmd1rKEoDBSpZh4nB'
 }
 
-# اتصال به دیتابیس
-db = mysql.connector.connect(**db_config)
-cursor = db.cursor()
+# ایجاد جدول در دیتابیس
+def initialize_database():
+    try:
+        conn = psycopg2.connect(**db_config)
+        cursor = conn.cursor()
+        create_table_query = '''
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            telegram_id BIGINT NOT NULL,
+            first_name VARCHAR(255) NOT NULL,
+            last_name VARCHAR(255),
+            username VARCHAR(255),
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        '''
+        cursor.execute(create_table_query)
+        conn.commit()
+        print("Table 'users' initialized successfully")
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error initializing database: {e}")
 
-# دستورات ربات
+# ذخیره اطلاعات کاربر در دیتابیس
+def save_user_to_db(telegram_id, first_name, last_name, username):
+    try:
+        conn = psycopg2.connect(**db_config)
+        cursor = conn.cursor()
+        insert_query = '''
+        INSERT INTO users (telegram_id, first_name, last_name, username)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (telegram_id) DO NOTHING
+        '''
+        cursor.execute(insert_query, (telegram_id, first_name, last_name, username))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error saving user to database: {e}")
+
+# دستور /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شروع و ثبت کاربر جدید"""
-    user_id = update.effective_user.id
-    username = update.effective_user.username
-    referrer_id = context.args[0] if context.args else None
-
-    # ثبت کاربر جدید در دیتابیس
-    cursor.execute(
-        "INSERT IGNORE INTO Users (telegram_id, username) VALUES (%s, %s)",
-        (user_id, username)
+    user = update.effective_user
+    save_user_to_db(
+        telegram_id=user.id,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        username=user.username
     )
-    db.commit()
+    await update.message.reply_text(f"سلام {user.first_name}! به ربات ما خوش آمدید.")
 
-    # اگر از لینک دعوت استفاده شده، ثبت دعوت
-    if referrer_id:
-        try:
-            cursor.execute("SELECT id FROM Users WHERE telegram_id = %s", (referrer_id,))
-            referrer_db_id = cursor.fetchone()[0]
-            cursor.execute(
-                "INSERT INTO Referrals (user_id, referred_user_id) VALUES (%s, %s)",
-                (referrer_db_id, user_id)
-            )
-            cursor.execute(
-                "UPDATE Users SET invites_count = invites_count + 1 WHERE id = %s",
-                (referrer_db_id,)
-            )
-            db.commit()
-        except:
-            pass
+# دستور /help
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("لیست دستورات موجود:\n/start - شروع\n/help - کمک")
 
-    await update.message.reply_text("سلام! به ربات خوش آمدید.")
+# تابع اصلی
+def main():
+    # مقداردهی اولیه دیتابیس
+    initialize_database()
 
-async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ارسال لینک دعوت اختصاصی"""
-    user_id = update.effective_user.id
-    invite_link = f"https://t.me/YOUR_BOT_USERNAME?start={user_id}"
-    await update.message.reply_text(f"لینک دعوت شما:\n{invite_link}")
+    # ساخت اپلیکیشن ربات
+    application = ApplicationBuilder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
 
-async def check_invites(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بررسی تعداد دعوت‌های موفق"""
-    user_id = update.effective_user.id
-    cursor.execute("SELECT invites_count FROM Users WHERE telegram_id = %s", (user_id,))
-    result = cursor.fetchone()
-
-    if result:
-        invites_count = result[0]
-        if invites_count >= 10:
-            # تولید کد تخفیف
-            discount_code = f"DISC-{random.randint(1000, 9999)}"
-            cursor.execute(
-                "INSERT INTO Discounts (user_id, discount_code) VALUES ((SELECT id FROM Users WHERE telegram_id = %s), %s)",
-                (user_id, discount_code)
-            )
-            db.commit()
-            await update.message.reply_text(f"تبریک! شما ۱۰ دعوت موفق انجام دادید. کد تخفیف شما:\n{discount_code}")
-        else:
-            await update.message.reply_text(f"شما {invites_count} نفر دعوت کرده‌اید. برای دریافت کد تخفیف باید ۱۰ نفر را دعوت کنید.")
-    else:
-        await update.message.reply_text("شما در سیستم ثبت نشده‌اید.")
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ارسال پیام همگانی توسط ادمین"""
-    if update.effective_user.username != "YOUR_ADMIN_USERNAME":
-        await update.message.reply_text("شما دسترسی ندارید!")
-        return
-
-    message = " ".join(context.args)
-    cursor.execute("SELECT telegram_id FROM Users")
-    users = cursor.fetchall()
-
-    for (telegram_id,) in users:
-        try:
-            await context.bot.send_message(chat_id=telegram_id, text=message)
-        except:
-            pass
-
-    await update.message.reply_text("پیام به همه کاربران ارسال شد.")
-
-async def validate_discount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """اعتبارسنجی کد تخفیف توسط ادمین"""
-    if update.effective_user.username != "YOUR_ADMIN_USERNAME":
-        await update.message.reply_text("شما دسترسی ندارید!")
-        return
-
-    if len(context.args) == 0:
-        await update.message.reply_text("لطفاً کد تخفیف را وارد کنید.")
-        return
-
-    discount_code = context.args[0]
-    cursor.execute("UPDATE Discounts SET is_valid = 0 WHERE discount_code = %s", (discount_code,))
-    db.commit()
-    await update.message.reply_text(f"کد تخفیف {discount_code} باطل شد.")
-
-# اجرای ربات
-if __name__ == "__main__":
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    # اضافه کردن دستورات
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("invite", invite))
-    application.add_handler(CommandHandler("check", check_invites))
-    application.add_handler(CommandHandler("broadcast", broadcast))
-    application.add_handler(CommandHandler("validate", validate_discount))
+    application.add_handler(CommandHandler("help", help_command))
 
+    # اجرا
     application.run_polling()
+
+if __name__ == "__main__":
+    main()
