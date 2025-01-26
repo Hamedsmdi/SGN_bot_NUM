@@ -7,7 +7,7 @@ import mysql.connector
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 # اطلاعات دیتابیس
 db_config = {
-    "host": "46.4.117.157",
+    "host": "ns473.mihanwebhost.com",
     "user": "sgncoir_SGN_TELEGRAM_bot",
     "password": "nGbo1{ew~&$]",
     "database": "sgncoir_SGN_TELEGRAM_bot"
