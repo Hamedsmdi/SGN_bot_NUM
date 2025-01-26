@@ -1,6 +1,7 @@
 import os
 import logging
 import psycopg2
+import random
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -49,19 +50,33 @@ def initialize_database():
                     """
                     CREATE TABLE IF NOT EXISTS users (
                         id SERIAL PRIMARY KEY,
-                        user_id BIGINT NOT NULL,
+                        user_id BIGINT NOT NULL UNIQUE,
                         username TEXT,
                         first_name TEXT,
-                        last_name TEXT
+                        last_name TEXT,
+                        invite_count INT DEFAULT 0
+                    );
+
+                    CREATE TABLE IF NOT EXISTS discount_codes (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL,
+                        code VARCHAR(10) NOT NULL UNIQUE,
+                        is_used BOOLEAN DEFAULT FALSE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                     """
                 )
                 connection.commit()
-                logger.info("Table 'users' initialized successfully.")
+                logger.info("Tables initialized successfully.")
         except Exception as e:
             logger.error(f"Error initializing the database: {e}")
         finally:
             connection.close()
+
+
+# تولید کد تخفیف به صورت رندوم
+def generate_discount_code():
+    return ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=8))
 
 
 # دستور شروع
@@ -69,7 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("سلام! من یک ربات تلگرام هستم. چگونه می‌توانم کمک کنم؟")
 
 
-# دستور اضافه کردن اطلاعات کاربر به دیتابیس
+# ذخیره اطلاعات کاربر در دیتابیس
 async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     connection = connect_to_database()
@@ -94,6 +109,79 @@ async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             connection.close()
 
 
+# شمارش دعوت‌ها و تولید کد تخفیف
+async def invite_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if len(context.args) != 1:
+        await update.message.reply_text("لطفاً آیدی کاربری که دعوت کرده‌اید را وارد کنید.")
+        return
+
+    invited_user_id = int(context.args[0])
+    inviter_user_id = update.effective_user.id
+
+    connection = connect_to_database()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # افزایش شمارش دعوت‌ها
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET invite_count = invite_count + 1
+                    WHERE user_id = %s
+                    RETURNING invite_count;
+                    """,
+                    (inviter_user_id,)
+                )
+                result = cursor.fetchone()
+
+                if result:
+                    invite_count = result[0]
+                    if invite_count >= 10:
+                        discount_code = generate_discount_code()
+                        cursor.execute(
+                            """
+                            INSERT INTO discount_codes (user_id, code)
+                            VALUES (%s, %s);
+                            """,
+                            (inviter_user_id, discount_code),
+                        )
+                        await update.message.reply_text(
+                            f"تبریک! شما ۱۰ نفر دعوت کرده‌اید. کد تخفیف شما: {discount_code}"
+                        )
+                connection.commit()
+        except Exception as e:
+            logger.error(f"Error updating invite count: {e}")
+            await update.message.reply_text("مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
+        finally:
+            connection.close()
+
+
+# ارسال پیام انبوه
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != 123456789:  # جایگزین با آیدی ادمین
+        await update.message.reply_text("شما دسترسی لازم برای این دستور را ندارید.")
+        return
+
+    message = " ".join(context.args)
+    if not message:
+        await update.message.reply_text("لطفاً پیام موردنظر را وارد کنید.")
+        return
+
+    connection = connect_to_database()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT user_id FROM users")
+                users = cursor.fetchall()
+                for user in users:
+                    try:
+                        await context.bot.send_message(chat_id=user[0], text=message)
+                    except Exception as e:
+                        logger.error(f"Failed to send message to {user[0]}: {e}")
+        finally:
+            connection.close()
+
+
 # راه‌اندازی برنامه
 def main():
     initialize_database()
@@ -103,6 +191,8 @@ def main():
     # اضافه کردن دستورات
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("save", save_user))
+    application.add_handler(CommandHandler("invite", invite_user))
+    application.add_handler(CommandHandler("broadcast", broadcast))
 
     # اجرای ربات
     application.run_polling()
