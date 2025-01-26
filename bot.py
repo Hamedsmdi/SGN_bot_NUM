@@ -4,6 +4,7 @@ import psycopg2
 import random
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import asyncio
 
 # تنظیمات مربوط به log
 logging.basicConfig(
@@ -173,4 +174,4 @@ async def main():
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
