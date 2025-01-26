@@ -1,177 +1,87 @@
-import os
 import logging
-import psycopg2
+import os
 import random
+import psycopg2
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import asyncio
+from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters
+from telegram.ext import PicklePersistence
+from telegram.ext import ApplicationBuilder
 
-# تنظیمات مربوط به log
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+# اطلاعات مربوط به محیط
+PORT = os.getenv("PORT", "80")
+DATABASE_URL = os.getenv("DATABASE_URL", "YOUR_DATABASE_URL")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://sgn-bot-num.onrender.com/")
+
+# راه‌اندازی لاگ
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# گرفتن توکن از متغیر محیطی
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# اتصال به دیتابیس
+def connect_db():
+    conn = psycopg2.connect(DATABASE_URL)
+    return conn
 
-# تنظیمات دیتابیس
-DB_HOST = "dpg-cub1hu3qf0us73cc12ug-a"
-DB_PORT = "5432"
-DB_NAME = "telegram_bot_d2me"
-DB_USER = "telegram_bot"
-DB_PASSWORD = "68IQ9wpq8kRu6prEmd1rKEoDBSpZh4nB"
+# ارسال پیام خوشامدگویی به کاربر پس از اجرای دستور /start
+async def start(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    invite_link = f"https://t.me/{context.bot.username}?start={user_id}"
 
-# تابع اتصال به دیتابیس
-def connect_to_database():
-    try:
-        connection = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-        )
-        logger.info("Connected to the database successfully.")
-        return connection
-    except Exception as e:
-        logger.error(f"Error connecting to the database: {e}")
-        return None
+    # ارسال لینک دعوت به کاربر
+    await update.message.reply_text(f"سلام! برای دعوت از دوستان خود به کانال فروشگاه، از لینک زیر استفاده کنید:\n{invite_link}")
 
-# ایجاد جدول در دیتابیس (در صورتی که وجود نداشته باشد)
-def initialize_database():
-    connection = connect_to_database()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS users (
-                        id SERIAL PRIMARY KEY,
-                        user_id BIGINT NOT NULL UNIQUE,
-                        username TEXT,
-                        first_name TEXT,
-                        last_name TEXT,
-                        invite_count INT DEFAULT 0
-                    );
+    # ثبت کاربر در دیتابیس
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
-                    CREATE TABLE IF NOT EXISTS discount_codes (
-                        id SERIAL PRIMARY KEY,
-                        user_id BIGINT NOT NULL,
-                        code VARCHAR(10) NOT NULL UNIQUE,
-                        is_used BOOLEAN DEFAULT FALSE,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-                    """
-                )
-                connection.commit()
-                logger.info("Tables initialized successfully.")
-        except Exception as e:
-            logger.error(f"Error initializing the database: {e}")
-        finally:
-            connection.close()
+# ثبت عضویت جدید
+async def new_member(update: Update, context: CallbackContext):
+    for member in update.message.new_chat_members:
+        user_id = member.id
+        inviter_id = update.message.from_user.id
 
-# تولید کد تخفیف به صورت رندوم
+        # اتصال به دیتابیس برای شمارش تعداد دعوت‌ها
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users WHERE inviter_id = %s", (inviter_id,))
+        count = cursor.fetchone()[0]
+
+        if count == 9:  # چک کردن که کاربر 10 نفر دعوت کرده باشد
+            discount_code = generate_discount_code()
+            await context.bot.send_message(inviter_id, f"تبریک! شما 10 نفر را به کانال دعوت کرده‌اید. کد تخفیف شما: {discount_code}")
+
+        # اطلاع‌رسانی به کاربر
+        await context.bot.send_message(inviter_id, f"{member.full_name} به کانال پیوست.\nتعداد افرادی که شما دعوت کرده‌اید: {count + 1} نفر")
+
+        cursor.close()
+        conn.commit()
+        conn.close()
+
+# تولید کد تخفیف رندوم
 def generate_discount_code():
     return ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=8))
 
-# دستور شروع
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("سلام! من ربات هوشمند گالری گوهر نگار هستم. من برای شما یک لینک منحصر به فرد ارسال میکنم و کاربرانی که با این لینک دعوت کنین برای شما امتیاز به همراه میارند و میتونین با امتیازات خودتون تا سقف 50 درصد تخفیف از گالری دریافت کنین ، یعنی اگر سبد خریدتون 1 میلیون تومان بشه شما فقط 500 هزار تومن پرداخت میکنین .")
-
-# ذخیره اطلاعات کاربر در دیتابیس
-async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    connection = connect_to_database()
-
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO users (user_id, username, first_name, last_name)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO NOTHING;
-                    """,
-                    (user.id, user.username, user.first_name, user.last_name),
-                )
-                connection.commit()
-                await update.message.reply_text("اطلاعات شما با موفقیت ذخیره شد!")
-        except Exception as e:
-            logger.error(f"Error saving user to database: {e}")
-            await update.message.reply_text("مشکلی در ذخیره اطلاعات شما پیش آمد.")
-        finally:
-            connection.close()
-
-# شمارش دعوت‌ها و تولید کد تخفیف
-async def invite_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if len(context.args) != 1:
-        await update.message.reply_text("لطفاً آیدی کاربری که دعوت کرده‌اید را وارد کنید.")
-        return
-
-    invited_user_id = int(context.args[0])
-    inviter_user_id = update.effective_user.id
-
-    connection = connect_to_database()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                # افزایش شمارش دعوت‌ها
-                cursor.execute(
-                    """
-                    UPDATE users
-                    SET invite_count = invite_count + 1
-                    WHERE user_id = %s
-                    RETURNING invite_count;
-                    """,
-                    (inviter_user_id,)
-                )
-                result = cursor.fetchone()
-
-                if result:
-                    invite_count = result[0]
-                    if invite_count >= 10:
-                        discount_code = generate_discount_code()
-                        cursor.execute(
-                            """
-                            INSERT INTO discount_codes (user_id, code)
-                            VALUES (%s, %s);
-                            """,
-                            (inviter_user_id, discount_code),
-                        )
-                        await update.message.reply_text(
-                            f"تبریک! شما ۱۰ نفر دعوت کرده‌اید. کد تخفیف شما: {discount_code}"
-                        )
-                connection.commit()
-        except Exception as e:
-            logger.error(f"Error updating invite count: {e}")
-            await update.message.reply_text("مشکلی پیش آمد. لطفاً دوباره تلاش کنید.")
-        finally:
-            connection.close()
-
-# راه‌اندازی Webhook
+# راه‌اندازی Webhook و اجرای برنامه
 async def main():
-    initialize_database()
+    # راه‌اندازی برنامه
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # گرفتن پورت از Render
-    PORT = os.getenv("PORT", 5000)  # اگر پورت از Render ارسال نشد، پورت 5000 را استفاده می‌کنیم
-
-    # راه‌اندازی ربات
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
-    # اضافه کردن دستورات
+    # اضافه کردن handler‌ها
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("save", save_user))
-    application.add_handler(CommandHandler("invite", invite_user))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member))
 
-    # تنظیم Webhook
+    # شروع Webhook
     application.run_webhook(
-        listen="0.0.0.0",  # گوش دادن به تمام IP ها
+        listen="0.0.0.0",  # گوش دادن به همه IP‌ها
         port=int(PORT),  # پورت اختصاصی
         url_path=TELEGRAM_BOT_TOKEN,
-        webhook_url=f"https://sgn-bot-num.onrender.com/{TELEGRAM_BOT_TOKEN}",  # دامنه Render خود را وارد کنید
+        webhook_url=WEBHOOK_URL,  # دامنه Render شما
     )
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
