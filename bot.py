@@ -190,7 +190,7 @@ def main():
         listen="0.0.0.0",  # تنظیم آدرس IP برای گوش دادن
         port=8443,         # پورت مورد نظر
         url_path=TELEGRAM_BOT_TOKEN,  # مسیر آدرس وب‌هوک
-        webhook_url="https://your-domain.com/" + TELEGRAM_BOT_TOKEN  # آدرس کامل وب‌هوک
+        webhook_url="https://sgn-bot-num.onrender.com" + TELEGRAM_BOT_TOKEN  # آدرس کامل وب‌هوک
     )
 
 if __name__ == "__main__":
