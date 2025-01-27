@@ -2,6 +2,7 @@ import os
 import logging
 import psycopg2
 import random
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -21,6 +22,9 @@ DB_PORT = "5432"
 DB_NAME = "telegram_bot_d2me"
 DB_USER = "telegram_bot"
 DB_PASSWORD = "68IQ9wpq8kRu6prEmd1rKEoDBSpZh4nB"
+
+# Flask app برای مدیریت درخواست‌های HTTP
+app = Flask(__name__)
 
 # تابع اتصال به دیتابیس
 def connect_to_database():
@@ -77,7 +81,10 @@ def generate_discount_code():
 
 # دستور شروع
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("سلام! من ربات هوشمند گالری گوهر نگار هستم. من برای شما یک لینک منحصر به فرد ارسال میکنم و کاربرانی که با این لینک دعوت کنین برای شما امتیاز به همراه میارند و میتونین با امتیازات خودتون تا سقف 50 درصد تخفیف از گالری دریافت کنین ، یعنی اگر سبد خریدتون 1 میلیون تومان بشه شما فقط 500 هزار تومن پرداخت میکنین .")
+    await update.message.reply_text(
+        "سلام! من ربات هوشمند گالری گوهر نگار هستم. "
+        "من برای شما یک لینک منحصر به فرد ارسال میکنم و کاربرانی که با این لینک دعوت کنین برای شما امتیاز به همراه میارند."
+    )
 
 # ذخیره اطلاعات کاربر در دیتابیس
 async def save_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -148,50 +155,29 @@ async def invite_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         finally:
             connection.close()
 
-# ارسال پیام انبوه
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_user.id != 123456789:  # جایگزین با آیدی ادمین
-        await update.message.reply_text("شما دسترسی لازم برای این دستور را ندارید.")
-        return
-
-    message = " ".join(context.args)
-    if not message:
-        await update.message.reply_text("لطفاً پیام موردنظر را وارد کنید.")
-        return
-
-    connection = connect_to_database()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT user_id FROM users")
-                users = cursor.fetchall()
-                for user in users:
-                    try:
-                        await context.bot.send_message(chat_id=user[0], text=message)
-                    except Exception as e:
-                        logger.error(f"Failed to send message to {user[0]}: {e}")
-        finally:
-            connection.close()
-
-# راه‌اندازی برنامه با Webhook
-def main():
+# راه‌اندازی برنامه تلگرام
+def setup_telegram_bot():
     initialize_database()
-
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # اضافه کردن دستورات
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("save", save_user))
     application.add_handler(CommandHandler("invite", invite_user))
-    application.add_handler(CommandHandler("broadcast", broadcast))
 
-    # اجرای Webhook
-    application.run_webhook(
-        listen="0.0.0.0",  # تنظیم آدرس IP برای گوش دادن
-        port=8443,         # پورت مورد نظر
-        url_path=TELEGRAM_BOT_TOKEN,  # مسیر آدرس وب‌هوک
-        webhook_url="https://sgn-bot-num.onrender.com" + TELEGRAM_BOT_TOKEN  # آدرس کامل وب‌هوک
-    )
+    return application
+
+telegram_bot = setup_telegram_bot()
+
+@app.route("/")
+def home():
+    return "سرور ربات تلگرام فعال است و به درستی کار می‌کند!"
+
+@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+def webhook():
+    if request.method == "POST":
+        telegram_bot.update_queue.put(Update.de_json(request.get_json(force=True), telegram_bot.bot))
+        return "OK", 200
 
 if __name__ == "__main__":
-    main()
+    app.run(host="0.0.0.0", port=8443)
