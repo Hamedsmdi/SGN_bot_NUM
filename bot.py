@@ -163,7 +163,8 @@ async def process_update(update_data):
 @app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def webhook():
     update_data = request.get_json(force=True)
-    asyncio.create_task(process_update(update_data))
+    # اصلاح کد با استفاده از asyncio.run()
+    asyncio.run(process_update(update_data))
     return "OK", 200
 
 if __name__ == "__main__":
