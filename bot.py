@@ -160,7 +160,7 @@ async def process_update(update_data):
     update = Update.de_json(update_data, tg_bot.bot)
     await tg_bot.update_queue.put(update)
 
-@tg_app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def webhook():
     update_data = request.get_json(force=True)
     asyncio.create_task(process_update(update_data))
