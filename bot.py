@@ -25,7 +25,7 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 # تنظیم Flask
-app = Flask(__name__)
+flask_app = Flask(__name__)
 
 def connect_to_database():
     try:
@@ -150,22 +150,21 @@ def setup_telegram_bot():
     
     return bot
 
-app = setup_telegram_bot()
+tg_bot = setup_telegram_bot()
 
-@app.route("/")
-def home():
-    return "ربات تلگرام فعال است!"
-
-async def process_update(update_data):
-    update = Update.de_json(update_data, app.bot)
-    await app.update_queue.put(update)
-
-@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+@flask_app.route("/webhook", methods=["POST"])
 def webhook():
     update_data = request.get_json(force=True)
-    # اصلاح کد با استفاده از asyncio.run()
     asyncio.run(process_update(update_data))
     return "OK", 200
 
+async def process_update(update_data):
+    update = Update.de_json(update_data, tg_bot.bot)
+    await tg_bot.update_queue.put(update)
+
+@flask_app.route("/")
+def home():
+    return "ربات تلگرام فعال است!"
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8443)
+    flask_app.run(host="0.0.0.0", port=8443)
