@@ -2,6 +2,7 @@ import os
 import logging
 import random
 import psycopg2
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -154,7 +155,6 @@ tg_bot = setup_telegram_bot()
 @app.route("/")
 def home():
     return "ربات تلگرام فعال است!"
-import asyncio
 
 async def process_update(update_data):
     update = Update.de_json(update_data, tg_bot.bot)
