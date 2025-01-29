@@ -154,10 +154,16 @@ tg_bot = setup_telegram_bot()
 @app.route("/")
 def home():
     return "ربات تلگرام فعال است!"
+import asyncio
 
-@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+async def process_update(update_data):
+    update = Update.de_json(update_data, tg_bot.bot)
+    await tg_bot.update_queue.put(update)
+
+@tg_app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def webhook():
-    tg_bot.update_queue.put(Update.de_json(request.get_json(force=True), tg_bot.bot))
+    update_data = request.get_json(force=True)
+    asyncio.create_task(process_update(update_data))
     return "OK", 200
 
 if __name__ == "__main__":
