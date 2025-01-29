@@ -24,7 +24,7 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 # تنظیم Flask
-tg_app = Flask(__name__)
+app = Flask(__name__)
 
 def connect_to_database():
     try:
@@ -141,24 +141,24 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def setup_telegram_bot():
     initialize_database()
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("invite", invite))
-    app.add_handler(CommandHandler("check", check_invite))
+    bot.add_handler(CommandHandler("start", start))
+    bot.add_handler(CommandHandler("invite", invite))
+    bot.add_handler(CommandHandler("check", check_invite))
     
-    return app
+    return bot
 
 tg_bot = setup_telegram_bot()
 
-@tg_app.route("/")
+@app.route("/")
 def home():
     return "ربات تلگرام فعال است!"
 
-@tg_app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
+@app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def webhook():
     tg_bot.update_queue.put(Update.de_json(request.get_json(force=True), tg_bot.bot))
     return "OK", 200
 
 if __name__ == "__main__":
-    tg_app.run(host="0.0.0.0", port=8443)
+    app.run(host="0.0.0.0", port=8443)
