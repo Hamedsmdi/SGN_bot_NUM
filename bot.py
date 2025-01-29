@@ -150,15 +150,15 @@ def setup_telegram_bot():
     
     return bot
 
-tg_bot = setup_telegram_bot()
+app = setup_telegram_bot()
 
 @app.route("/")
 def home():
     return "ربات تلگرام فعال است!"
 
 async def process_update(update_data):
-    update = Update.de_json(update_data, tg_bot.bot)
-    await tg_bot.update_queue.put(update)
+    update = Update.de_json(update_data, app.bot)
+    await app.update_queue.put(update)
 
 @app.route(f"/{TELEGRAM_BOT_TOKEN}", methods=["POST"])
 def webhook():
